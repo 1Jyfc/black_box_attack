@@ -1,6 +1,27 @@
 import numpy as np
 import scipy.io.wavfile as wav
-import Levenshtein
+import os
+import argparse
+import client
+
+cache_path = "./cache/"
+result_path = "./result/"
+model_path = "DeepSpeech/model/output_graph.pbmm"
+lm_path = "DeepSpeech/model/lm.binary"
+trie_path = "DeepSpeech/model/trie"
+output_file = "result/result.wav"
+
+
+def levenshtein(str1, str2):
+    edit = [[i + j for j in range(len(str2) + 1)] for i in range(len(str1) + 1)]
+    for i in range(1, len(str1) + 1):
+        for j in range(1, len(str2) + 1):
+            if str1[i - 1] == str2[j - 1]:
+                d = 0
+            else:
+                d = 1
+            edit[i][j] = min(edit[i - 1][j] + 1, edit[i][j - 1] + 1, edit[i - 1][j - 1] + d)
+    return edit[len(str1)][len(str2)]
 
 
 def load_wav(input_wave_file):
@@ -30,13 +51,14 @@ class RunAttack:
     """
     算法类
     """
-    def __init__(self, input_wav_file, output_wav_file, target_phrase, s, k, t, u, epsilon):
+
+    def __init__(self, input_wav_file, output_wav_file, target_phrase, s, k, t, epsilon):
         self.s = s  # sample size
         self.k = k  # ranking threshold
         self.t = t  # max iteration time
-        self.u = u  # 每次缩小搜索范围时的循环次数
         self.epsilon = epsilon  # 搜索空间范围
         self.input_audio = load_wav(input_wav_file).astype(np.float32)
+        self.u = int(self.input_audio.shape[0] * 0.01)
         self.output_wav_file = output_wav_file
         self.target_phrase = target_phrase
 
@@ -65,3 +87,21 @@ class RunAttack:
                 ''' 4. 重置搜索空间 '''
             ''' 4. 在B中选取不满足度最小的s+k个扰动作为新的B，选取不满足度最小的扰动作为新的x，开始下一轮迭代 '''
         ''' 6. 经过最大迭代轮数尚未攻击成功 '''
+
+
+if __name__ == '__main__':
+    cache_folder = os.path.exists(cache_path)
+    if not cache_folder:
+        os.makedirs(cache_path)
+    result_folder = os.path.exists(result_path)
+    if not cache_folder:
+        os.makedirs(result_path)
+
+    parser = argparse.ArgumentParser(description='Running Attack.')
+    parser.add_argument('--audio', required=True,
+                        help='Path to the audio file to run (WAV format)')
+    parser.add_argument('--target', required=True,
+                        help='Target phrase for running attack')
+    args = parser.parse_args()
+    attack = RunAttack(args.audio, output_file, args.target, s=3, k=2, t=100, epsilon=100)
+    attack.run()

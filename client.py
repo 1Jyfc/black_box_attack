@@ -18,20 +18,24 @@ try:
 except ImportError:
     from pipes import quote
 
+
 def convert_samplerate(audio_path, desired_sample_rate):
-    sox_cmd = 'sox {} --type raw --bits 16 --channels 1 --rate {} --encoding signed-integer --endian little --compression 0.0 --no-dither - '.format(quote(audio_path), desired_sample_rate)
+    sox_cmd = 'sox {} --type raw --bits 16 --channels 1 --rate {} --encoding signed-integer --endian little --compression 0.0 --no-dither - '.format(
+        quote(audio_path), desired_sample_rate)
     try:
         output = subprocess.check_output(shlex.split(sox_cmd), stderr=subprocess.PIPE)
     except subprocess.CalledProcessError as e:
         raise RuntimeError('SoX returned non-zero status: {}'.format(e.stderr))
     except OSError as e:
-        raise OSError(e.errno, 'SoX not found, use {}hz files or install it: {}'.format(desired_sample_rate, e.strerror))
+        raise OSError(e.errno,
+                      'SoX not found, use {}hz files or install it: {}'.format(desired_sample_rate, e.strerror))
 
     return desired_sample_rate, np.frombuffer(output, np.int16)
 
 
 def metadata_to_string(metadata):
     return ''.join(item.character for item in metadata.items)
+
 
 def words_from_metadata(metadata):
     word = ""
@@ -72,7 +76,6 @@ def metadata_json_output(metadata):
     json_result["words"] = words_from_metadata(metadata)
     json_result["confidence"] = metadata.confidence
     return json.dumps(json_result)
-	
 
 
 class VersionAction(argparse.Action):
@@ -93,29 +96,30 @@ def load_model(model_path, beam_width=500):
     return ds
 
 
-def run_deep_speech(ds, lm_path, trie_path, audio_path,
-                    lm_alpha=0.75, lm_beta=1.85,
-                    is_extended=False, is_json=False):
+def get_audio_array(ds, audio_path):
     desired_sample_rate = ds.sampleRate()
-
-    if lm_path and trie_path:
-        print('Loading language model from files {} {}'.format(lm_path, trie_path), file=sys.stderr)
-        lm_load_start = timer()
-        ds.enableDecoderWithLM(lm_path, trie_path, lm_alpha, lm_beta)
-        lm_load_end = timer() - lm_load_start
-        print('Loaded language model in {:.3}s.'.format(lm_load_end), file=sys.stderr)
-
     fin = wave.open(audio_path, 'rb')
     fs = fin.getframerate()
     if fs != desired_sample_rate:
-        print('Warning: original sample rate ({}) is different than {}hz. Resampling might produce erratic speech recognition.'.format(fs, desired_sample_rate), file=sys.stderr)
+        print(
+            'Warning: original sample rate ({}) is different than {}hz. Resampling might produce erratic speech recognition.'.format(
+                fs, desired_sample_rate), file=sys.stderr)
         fs, audio = convert_samplerate(audio_path, desired_sample_rate)
     else:
         audio = np.frombuffer(fin.readframes(fin.getnframes()), np.int16)
 
-    audio_length = fin.getnframes() * (1/fs)
     fin.close()
 
+    return audio
+
+
+def update_ds(ds, lm_path, trie_path, lm_alpha=0.75, lm_beta=1.85):
+    if lm_path and trie_path:
+        ds.enableDecoderWithLM(lm_path, trie_path, lm_alpha, lm_beta)
+    return ds
+
+
+def run_deep_speech(ds, audio, is_extended=False, is_json=False):
     if is_extended:
         return metadata_to_string(ds.sttWithMetadata(audio))
     elif is_json:
@@ -123,3 +127,12 @@ def run_deep_speech(ds, lm_path, trie_path, audio_path,
     else:
         return ds.stt(audio)
 
+
+m_audio_path = "DeepSpeech/audio/4507-16021-0012.wav"
+m_model_path = "DeepSpeech/model/output_graph.pbmm"
+m_lm_path = "DeepSpeech/model/lm.binary"
+m_trie_path = "DeepSpeech/model/trie"
+m_ds = load_model(m_model_path)
+m_ds = update_ds(m_ds, m_lm_path, m_trie_path)
+m_audio = get_audio_array(m_ds, m_audio_path)
+print(run_deep_speech(m_ds, m_audio))

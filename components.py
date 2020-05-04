@@ -1,13 +1,18 @@
 import copy
 
+
 class Instance:
     __feature = []  # feature value in each dimension
+    __region = []
+    __len = 0
     __fitness = 0  # fitness of objective function under those features
+    __string = ""
 
-    def __init__(self, dim):
-        self.__feature = range(dim.getSize())
+    def __init__(self):
+        self.__feature = []
+        self.__region = []
         self.__fitness = 0
-        self.__dimension = dim
+        self.__len = 0
 
     # return feature value in index-th dimension
     def getFeature(self, index):
@@ -25,6 +30,24 @@ class Instance:
     def setFeatures(self, v):
         self.__feature = v
 
+    def getRegion(self, index):
+        return self.__region[index]
+
+    def getRegions(self):
+        return self.__region
+
+    def setRegion(self, index, v):
+        self.__region[index] = v
+
+    def setRegions(self, v):
+        self.__region = v
+
+    def getString(self):
+        return self.__string
+
+    def setString(self, s):
+        self.__string = s
+
     # return fitness under those features
     def getFitness(self):
         return self.__fitness
@@ -33,53 +56,31 @@ class Instance:
     def setFitness(self, fit):
         self.__fitness = fit
 
+    def getLen(self):
+        return self.__len
+
+    def setLen(self, l):
+        self.__len = l
+
     #
     def Equal(self, ins):
-        if len(self.__feature) != len(ins.__feature):
-            return False
-        for i in range(len(self.__feature)):
-            if self.__feature[i] != ins.__feature[i]:
-                return False
-        return True
+        return self.__fitness == ins.getFitness()
 
     # copy this instance
     def CopyInstance(self):
-        copy_ = Instance(self.__dimension)
+        copy_ = Instance()
         features = copy.copy(self.__feature)
         copy_.setFeatures(features)
+        regions = copy.copy(self.__region)
+        copy_.setRegions(regions)
         copy_.setFitness(self.__fitness)
+        copy_.setString(self.__string)
+        copy_.setLen(self.__len)
         return copy_
 
     def CopyFromInstance(self, ins_):
-        self.__feature = []
         self.__feature = copy.copy(ins_.getFeatures())
-
-
-class Dimension:
-    __size = 0  # dimension size
-    __max = 0
-    __min = 0
-
-    def __init__(self):
-        return
-
-    def setDimensionSize(self, s):
-        self.__size = s
-        return
-
-    def setMax(self, m):
-        self.__max = m
-        return
-
-    def setMin(self, m):
-        self.__min = m
-        return
-
-    def getMax(self):
-        return self.__max
-
-    def getMin(self):
-        return self.__min
-
-    def getSize(self):
-        return self.__size
+        self.__region = copy.copy(ins_.getRegions())
+        self.__fitness = ins_.getFitness()
+        self.__string = ins_.getString()
+        self.__len = ins_.getLen()

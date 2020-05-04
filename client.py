@@ -127,12 +127,3 @@ def run_deep_speech(ds, audio, is_extended=False, is_json=False):
     else:
         return ds.stt(audio)
 
-
-m_audio_path = "DeepSpeech/audio/4507-16021-0012.wav"
-m_model_path = "DeepSpeech/model/output_graph.pbmm"
-m_lm_path = "DeepSpeech/model/lm.binary"
-m_trie_path = "DeepSpeech/model/trie"
-m_ds = load_model(m_model_path)
-m_ds = update_ds(m_ds, m_lm_path, m_trie_path)
-m_audio = get_audio_array(m_ds, m_audio_path)
-print(run_deep_speech(m_ds, m_audio))

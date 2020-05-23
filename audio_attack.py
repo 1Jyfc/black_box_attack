@@ -55,11 +55,26 @@ class AudioAttack:
     算法类
     """
 
-    def __init__(self, audio, ds, threshold, len, ss, mi, mr, ex):
+    def __init__(self, audio, ds, threshold, len, pn, ss, mi, mr, ex):
+        self.dis_group = [[0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+                          [2, 1, 4, 4, 4, 4, 4, 2, 4, 4, 2, 3, 4],
+                          [2, 4, 1, 3, 3, 4, 3, 4, 4, 4, 4, 4, 4],
+                          [2, 4, 3, 1, 2, 4, 3, 4, 4, 4, 4, 4, 4],
+                          [2, 4, 3, 2, 1, 4, 3, 4, 3, 4, 4, 3, 4],
+                          [2, 4, 4, 4, 4, 1, 2, 4, 3, 2, 3, 3, 4],
+                          [2, 4, 3, 3, 3, 2, 1, 3, 4, 4, 4, 2, 4],
+                          [2, 2, 4, 4, 4, 4, 3, 1, 2, 4, 4, 4, 3],
+                          [2, 4, 4, 4, 3, 3, 4, 2, 1, 4, 4, 2, 4],
+                          [2, 4, 4, 4, 4, 2, 4, 4, 4, 1, 4, 3, 4],
+                          [2, 2, 4, 4, 4, 3, 4, 4, 4, 4, 1, 4, 4],
+                          [2, 3, 4, 4, 3, 3, 2, 4, 2, 3, 4, 1, 4],
+                          [2, 4, 4, 4, 4, 4, 4, 3, 4, 4, 4, 4, 1]]
         self.audio = audio  # 原始音频文件的numpy数组
         self.audio_length = len  # 音频长度(某种意义上即为维度)
+        self.base_threshold = threshold
         self.threshold = threshold  # 扰动范围阈值
         self.ds = ds  # deep speech模型
+        self.positive_num = pn  # 最优集大小
         self.sample_size = ss  # 备选集大小
         self.max_iteration = mi  # 最大扰动次数
         self.move_rate = mr  # 每次更新搜索空间的更新概率
@@ -68,13 +83,48 @@ class AudioAttack:
         self.ini_label = client.run_deep_speech(self.ds, self.audio)  # 原始音频的识别结果label
         self.tar_label = None  # 攻击的target label
 
-        self.pop = []  # 备选集
+        self.pop = []  # 最优集
+        self.pos_pop = []  # 备选集
         self.optional = None  # 最优扰动
+
+        self.group = {' ': 0, 'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 1, 'f': 5, 'g': 3, 'h': 6, 'i': 7, 'j': 8, 'k': 3,
+                      'l': 4, 'm': 9, 'n': 9, 'o': 10, 'p': 2, 'q': 3, 'r': 11, 's': 12, 't': 4, 'u': 10, 'v': 5,
+                      'w': 10, 'x': 3, 'y': 8, 'z': 12, '\'': 0}
 
     def clear(self):
         self.pop = []
         self.optional = None
         return
+
+    def dis_char(self, ch1, ch2):
+        if ch1 == ch2:
+            return 0
+        return self.dis_group[self.group[ch1]][self.group[ch2]]
+
+    def dis_string(self, str1, str2):
+        m = len(str1)
+        n = len(str2)
+        if m * n == 0:
+            return 2 * (m + n)
+        str1 = "0" + str1
+        str2 = "0" + str2
+        dis = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
+        dis[1][1] = self.dis_char(str1[1], str2[1])
+        for j in range(2, n + 1):
+            dis[1][j] = min(dis[1][j - 1] + 2, 2 * (j - 1) + self.dis_char(str1[1], str2[j]))
+
+        for i in range(2, m + 1):
+            dis[i][1] = min(dis[i - 1][1] + 2, 2 * (i - 1) + self.dis_char(str1[i], str2[1]))
+            for j in range(2, n + 1):
+                dis[i][j] = dis[i][j - 1] + 2
+                for left in range(1, i):
+                    k_left = i - left
+                    min_part = 4
+                    for k_right in range(k_left + 1, i + 1):
+                        min_part = min(min_part, self.dis_char(str1[k_right], str2[j]))
+                    dis[i][j] = min(dis[i][j], min_part + dis[k_left][j - 1] + 2 * (i - k_left - 1))
+                dis[i][j] = min(dis[i][j], self.dis_char(str1[1], str2[j]) + 2 * (i + j - 1))
+        return dis[m][n]
 
     def random_instance(self):
         """
@@ -107,22 +157,26 @@ class AudioAttack:
 
     def init(self):
         """
-        初始化，生成长度为batch_size的随机扰动并取最优的positive_num + sample_size个扰动，生成pos_pop和pop集
+        初始化
         :return:
         """
+        print("audio length: " + str(self.audio_length))
+        print("original string: " + self.ini_label)
         print("Initializing...")
         self.clear()
 
         self.pop = []
-        for i in range(self.sample_size):
+        self.pos_pop = []
+        for i in range(self.positive_num):
             ins = self.random_instance()
             self.pop.append(ins)
 
         self.run_once()
         self.pop.sort(key=lambda instance: instance.getFitness())
+        self.pos_pop = self.pop[:self.positive_num]
         print("Finish creating " + str(self.sample_size) + " samples.")
 
-        self.optional = self.pop[0].CopyInstance()
+        self.optional = self.pos_pop[0].CopyInstance()
         return
 
     def run_once(self, rtype=0):
@@ -135,7 +189,8 @@ class AudioAttack:
         batch_size = len(self.pop)
         # 预测
         for i in range(rtype, batch_size):
-            audio_interrupted = self.audio + self.pop[i].getFeatures()
+            audio_interrupted = np.array(np.clip(self.audio + self.pop[i].getFeatures(), -2 ** 15, 2 ** 15),
+                                         dtype='int16')
             pred_str = client.run_deep_speech(self.ds, audio_interrupted)
             # 使用pred_str计算不满足度，回填入pop
             fitness = self.compute_dis(pred_str)
@@ -150,7 +205,37 @@ class AudioAttack:
         :param pred:
         :return:
         """
-        return levenshtein(pred, self.tar_label)
+        # return levenshtein(pred, self.tar_label)
+        return self.dis_string(pred, self.tar_label)
+
+    def roulette(self):
+        roulette_rank = []
+        roulette_sum = 0
+        length = len(self.pop)
+        for i in range(length):
+            if self.pop[i].getFitness() == 0:
+                self.pos_pop = self.pop[i]
+                return
+            else:
+                rank = int(10000 / self.pop[i].getFitness())
+            roulette_sum += rank
+            roulette_rank.append(roulette_sum)
+        self.pos_pop = []
+        i = 0
+        while i < self.positive_num:
+            rand = np.random.randint(roulette_sum)
+            choose_rank = -1
+            for j in range(0, length):
+                if rand < roulette_rank[j]:
+                    choose_rank = j
+                    break
+
+            if self.pop[choose_rank] not in self.pos_pop:
+                self.pos_pop.append(self.pop[choose_rank])
+                i += 1
+
+        self.pos_pop.sort(key=lambda instance: instance.getFitness())
+        return
 
     def opt(self, target=None):
         self.tar_label = target
@@ -165,74 +250,81 @@ class AudioAttack:
 
             if expand == self.max_expand:
                 expand = 0
-                self.threshold *= 2
+                self.threshold += self.base_threshold
                 print("threshold expanded to " + str(self.threshold))
 
             # 如果fitness满足要求则退出
-            print("best string: " + self.optional.getString())
             if self.optional.getFitness() == 0:
                 print("Find attack in " + str(iter) + " times. File saved in result.txt.")
                 # 保存文件
                 return
 
-            self.pop = []
-            self.pop.append(self.optional)
-            for i in range(self.sample_size):
-                ins = self.optional.CopyInstance()
-                for index in range(ins.getLen()):
-                    rate = np.random.rand()
-                    if rate < self.move_rate:
-                        # 更新该维度的阈值和扰动
-                        feature = ins.getFeature(index)
-                        region = ins.getRegion(index)
-                        if feature > region:
-                            region = feature + self.threshold
-                            feature = np.random.randint(low=region - self.threshold, high=region + self.threshold,
-                                                        dtype='int16')
-                            ins.setRegion(index, region)
-                            ins.setFeature(index, feature)
-                        elif feature < region:
-                            region = feature - self.threshold
-                            feature = np.random.randint(low=region - self.threshold, high=region + self.threshold,
-                                                        dtype='int16')
-                            ins.setRegion(index, region)
-                            ins.setFeature(index, feature)
-                        else:
-                            ins.setFeature(index,
-                                           np.random.randint(low=region - self.threshold, high=region + self.threshold,
-                                                             dtype='int16'))
-                self.pop.append(ins)
+            for i in range(self.positive_num):
+                print("best " + str(i) + ": " + self.pos_pop[i].getString() + ", fitness: " + str(
+                    self.pos_pop[i].getFitness()))
 
-            self.run_once(rtype=1)
-            self.pop.sort(key=lambda instance: instance.getFitness())
-            if self.optional.Equal(self.pop[0]):
+            self.pop = []
+            for i in range(self.positive_num):
+                for j in range(self.sample_size):
+                    ins = self.pos_pop[i].CopyInstance()
+                    for index in range(ins.getLen()):
+                        rate = np.random.rand()
+                        if rate < self.move_rate:
+                            # 更新该维度的阈值和扰动
+                            feature = ins.getFeature(index)
+                            region = ins.getRegion(index)
+                            if feature > region:
+                                region = feature + self.threshold
+                                feature = np.random.randint(low=region - self.threshold, high=region + self.threshold,
+                                                            dtype='int16')
+                                ins.setRegion(index, region)
+                                ins.setFeature(index, feature)
+                            elif feature < region:
+                                region = feature - self.threshold
+                                feature = np.random.randint(low=region - self.threshold, high=region + self.threshold,
+                                                            dtype='int16')
+                                ins.setRegion(index, region)
+                                ins.setFeature(index, feature)
+                            else:
+                                ins.setFeature(index,
+                                               np.random.randint(low=region - self.threshold,
+                                                                 high=region + self.threshold,
+                                                                 dtype='int16'))
+                    self.pop.append(ins)
+
+            self.run_once()
+            self.pop.extend(self.pos_pop)
+            self.roulette()
+            if self.optional.Equal(self.pos_pop[0]):
                 expand += 1
             else:
                 expand = 0
-                self.optional = self.pop[0].CopyInstance()
+                self.optional = self.pos_pop[0].CopyInstance()
 
         return
 
 
-m_audio_path = "DeepSpeech/audio/4507-16021-0012.wav"
+m_audio_path = "DeepSpeech/audio/2830-3980-0043.wav"
 m_model_path = "DeepSpeech/model/output_graph.pbmm"
 m_lm_path = "DeepSpeech/model/lm.binary"
 m_trie_path = "DeepSpeech/model/trie"
 m_ds = client.load_model(m_model_path)
 m_ds = client.update_ds(m_ds, m_lm_path, m_trie_path)
 m_audio = client.get_audio_array(m_ds, m_audio_path)
-m_target = 'open the door'
+m_target = 'restart'
 
-m_threshold = 1024
+m_threshold = 256
 m_len = m_audio.shape[0]
-m_ss = 4
+m_pn = 10
+m_ss = 5
 m_mi = 100
-m_mr = 0.1
-m_ex = 24
+m_mr = 0.08
+m_ex = 8
 m_audio_attack = AudioAttack(audio=m_audio,
                              ds=m_ds,
                              threshold=m_threshold,
                              len=m_len,
+                             pn=m_pn,
                              ss=m_ss,
                              mi=m_mi,
                              mr=m_mr,

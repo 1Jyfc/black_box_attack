@@ -1,11 +1,12 @@
 import numpy as np
+from scipy.signal import butter, lfilter
 
-i0 = 0
-i1 = 0
-for i in range(100000):
-    x = np.random.randint(2)
-    if x == 0:
-        i0 += 1
-    else:
-        i1 += 1
-print(i0, i1)
+
+def highpass_filter(data, cutoff=7000, fs=16000, order=10):
+    b, a = butter(order, cutoff / (0.5 * fs), btype='high', analog=False)
+    return lfilter(b, a, data)
+
+
+x = np.arange(10)
+print(x)
+print(x[-7:])

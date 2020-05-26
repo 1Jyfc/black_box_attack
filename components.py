@@ -3,14 +3,12 @@ import copy
 
 class Instance:
     __feature = []  # feature value in each dimension
-    __region = []
     __len = 0
     __fitness = 0  # fitness of objective function under those features
     __string = ""
 
     def __init__(self):
         self.__feature = []
-        self.__region = []
         self.__fitness = 0
         self.__len = 0
 
@@ -20,7 +18,7 @@ class Instance:
 
     # return features of all dimensions
     def getFeatures(self):
-        return self.__feature
+        return copy.copy(self.__feature)
 
     # set feature value in index-th dimension
     def setFeature(self, index, v):
@@ -29,18 +27,6 @@ class Instance:
     # set features of all dimension
     def setFeatures(self, v):
         self.__feature = v
-
-    def getRegion(self, index):
-        return self.__region[index]
-
-    def getRegions(self):
-        return self.__region
-
-    def setRegion(self, index, v):
-        self.__region[index] = v
-
-    def setRegions(self, v):
-        self.__region = v
 
     def getString(self):
         return self.__string
@@ -71,8 +57,6 @@ class Instance:
         copy_ = Instance()
         features = copy.copy(self.__feature)
         copy_.setFeatures(features)
-        regions = copy.copy(self.__region)
-        copy_.setRegions(regions)
         copy_.setFitness(self.__fitness)
         copy_.setString(self.__string)
         copy_.setLen(self.__len)
@@ -80,7 +64,6 @@ class Instance:
 
     def CopyFromInstance(self, ins_):
         self.__feature = copy.copy(ins_.getFeatures())
-        self.__region = copy.copy(ins_.getRegions())
         self.__fitness = ins_.getFitness()
         self.__string = ins_.getString()
         self.__len = ins_.getLen()

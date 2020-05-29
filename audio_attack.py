@@ -214,11 +214,11 @@ class AudioAttack:
         return self.dis_string(pred, self.tar_label)
 
     def roulette(self):
-        self.pop.sort(key=lambda instance: instance.getFitness())
-        if self.pop[0].getFitness() > (self.max_fitness * 2 / 3):
-            print("加速收缩")
-            self.pos_pop = self.pop[:self.positive_num]
-            return
+        # self.pop.sort(key=lambda instance: instance.getFitness())
+        # if self.pop[0].getFitness() > (self.max_fitness * 2 / 3):
+        #     print("加速收缩")
+        #     self.pos_pop = self.pop[:self.positive_num]
+        #     return
 
         roulette_rank = []
         roulette_sum = 0
@@ -251,7 +251,7 @@ class AudioAttack:
     def crossover(self):
         sample1 = self.pos_pop[np.random.randint(self.positive_num)].getFeatures()
         sample2 = self.pos_pop[np.random.randint(self.positive_num)].getFeatures()
-        mask = np.random.rand(self.audio_length) < 0.5
+        mask = np.arange(self.audio_length) < (self.audio_length / 2)
         return sample1 * mask + sample2 * (1 - mask)
 
     def mutation(self, sample):
@@ -314,7 +314,7 @@ class AudioAttack:
         return
 
 
-m_audio_path = "DeepSpeech/audio/4507-16021-0012.wav"
+m_audio_path = "../audio/sample-1.wav"
 m_model_path = "DeepSpeech/model/output_graph.pbmm"
 m_lm_path = "DeepSpeech/model/lm.binary"
 m_trie_path = "DeepSpeech/model/trie"
@@ -330,7 +330,7 @@ m_ss = 5
 m_mi = 3000
 m_mr = 0.1
 m_ex = 8
-m_ns = 0.01
+m_ns = 0.005
 m_audio_attack = AudioAttack(audio=m_audio,
                              ds=m_ds,
                              threshold=m_threshold,

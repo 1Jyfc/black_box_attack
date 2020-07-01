@@ -55,16 +55,16 @@ class AudioAttack:
 
     def __init__(self, audio, ds, threshold, len, pn, ss, mi, mr, ex, ns):
         self.dis_group = [[0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
-                          [2, 1, 4, 4, 4, 4, 4, 2, 4, 4, 2, 3, 4],
+                          [2, 1, 4, 4, 4, 4, 4, 3, 4, 4, 3, 3, 4],
                           [2, 4, 1, 3, 3, 4, 3, 4, 4, 4, 4, 4, 4],
                           [2, 4, 3, 1, 2, 4, 3, 4, 4, 4, 4, 4, 4],
                           [2, 4, 3, 2, 1, 4, 3, 4, 3, 4, 4, 3, 4],
                           [2, 4, 4, 4, 4, 1, 2, 4, 3, 2, 3, 3, 4],
                           [2, 4, 3, 3, 3, 2, 1, 3, 4, 4, 4, 2, 4],
-                          [2, 2, 4, 4, 4, 4, 3, 1, 2, 4, 4, 4, 3],
+                          [2, 3, 4, 4, 4, 4, 3, 1, 2, 4, 4, 4, 3],
                           [2, 4, 4, 4, 3, 3, 4, 2, 1, 4, 4, 2, 4],
                           [2, 4, 4, 4, 4, 2, 4, 4, 4, 1, 4, 3, 4],
-                          [2, 2, 4, 4, 4, 3, 4, 4, 4, 4, 1, 4, 4],
+                          [2, 3, 4, 4, 4, 3, 4, 4, 4, 4, 1, 4, 4],
                           [2, 3, 4, 4, 3, 3, 2, 4, 2, 3, 4, 1, 4],
                           [2, 4, 4, 4, 4, 4, 4, 3, 4, 4, 4, 4, 1]]
         self.audio = audio  # 原始音频文件的numpy数组
@@ -168,8 +168,17 @@ class AudioAttack:
         self.pop = []
         self.pos_pop = []
         for i in range(self.positive_num):
-            ins = self.random_instance()
-            self.pop.append(ins)
+            inst = Instance()
+            inst_features = self.audio
+            for j in range(100):
+                features = np.random.randint(-2 ** 15, 2 ** 15 - 1, self.audio_length) * self.noise_stdev
+                features = self.highpass_filter(features)
+                mask = np.random.rand(self.audio_length) < self.mutation_rate
+                inst_features = inst_features + features * mask
+            inst.setFeatures(inst_features)
+            inst.setLen(self.audio_length)
+            # inst = self.random_instance()
+            self.pop.append(inst)
 
         self.run_once()
         self.pop.sort(key=lambda instance: instance.getFitness())
@@ -225,7 +234,7 @@ class AudioAttack:
         length = len(self.pop)
         for i in range(length):
             if self.pop[i].getFitness() == 0:
-                self.pos_pop = self.pop[i]
+                self.pos_pop = [self.pop[i]]
                 return
             else:
                 rank = int(10000 / self.pop[i].getFitness())
@@ -249,9 +258,13 @@ class AudioAttack:
         return
 
     def crossover(self):
-        sample1 = self.pos_pop[np.random.randint(self.positive_num)].getFeatures()
-        sample2 = self.pos_pop[np.random.randint(self.positive_num)].getFeatures()
-        mask = np.arange(self.audio_length) < (self.audio_length / 2)
+        rand1 = np.random.randint(self.positive_num)
+        rand2 = np.random.randint(self.positive_num)
+        while rand1 == rand2:
+            rand2 = np.random.randint(self.positive_num)
+        sample1 = self.pos_pop[rand1].getFeatures()
+        sample2 = self.pos_pop[rand2].getFeatures()
+        mask = np.random.rand(self.audio_length) < 0.5
         return sample1 * mask + sample2 * (1 - mask)
 
     def mutation(self, sample):
@@ -280,20 +293,22 @@ class AudioAttack:
         while time < self.max_iteration:
             print("iter time: " + str(time))
 
-            for i in range(self.positive_num):
-                print("best " + str(i) + ": " + self.pos_pop[i].getString() + ", fitness: " + str(
-                    self.pos_pop[i].getFitness()))
-
             self.string_list.append(self.optional.getString())
             if time % 100 == 0:
                 self.save_result(time)
+                save_wav(self.pos_pop[0].getFeatures(), "wav_" + str(time) + ".wav")
 
             # 如果fitness满足要求则退出
             if self.optional.getFitness() == 0:
                 print("Find attack in " + str(time) + " times. File saved in result.txt.")
                 # 保存文件
                 self.save_result(time)
+                save_wav(self.optional.getFeatures(), "result.wav")
                 return
+
+            for i in range(self.positive_num):
+                print("best " + str(i) + ": " + self.pos_pop[i].getString() + ", fitness: " + str(
+                    self.pos_pop[i].getFitness()))
 
             self.pop = []
             for i in range(self.positive_num * self.sample_size):
@@ -314,14 +329,14 @@ class AudioAttack:
         return
 
 
-m_audio_path = "../audio/sample-1.wav"
+m_audio_path = "../audio/character.wav"
 m_model_path = "DeepSpeech/model/output_graph.pbmm"
 m_lm_path = "DeepSpeech/model/lm.binary"
 m_trie_path = "DeepSpeech/model/trie"
 m_ds = client.load_model(m_model_path)
 m_ds = client.update_ds(m_ds, m_lm_path, m_trie_path)
 m_audio = client.get_audio_array(m_ds, m_audio_path)
-m_target = 'restart'
+m_target = 'care'
 
 m_threshold = 256
 m_len = m_audio.shape[0]
@@ -330,7 +345,7 @@ m_ss = 5
 m_mi = 3000
 m_mr = 0.1
 m_ex = 8
-m_ns = 0.005
+m_ns = 0.01
 m_audio_attack = AudioAttack(audio=m_audio,
                              ds=m_ds,
                              threshold=m_threshold,
